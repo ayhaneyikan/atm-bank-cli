@@ -8,4 +8,6 @@ edition = "2021"
 [dependencies]
 regex = "1"
 lazy_static = "1.4.0"
-crypto = { path = "../crypto" }
+rand = "0.7"
+x25519-dalek = "1.2.0"
+blake2 = "0.10.5"
