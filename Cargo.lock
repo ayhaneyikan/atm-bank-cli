@@ -25,6 +25,11 @@ dependencies = [
 [[package]]
 name = "bank"
 version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "pool",
+ "regex",
+]
 
 [[package]]
 name = "blake2"
@@ -55,10 +60,6 @@ name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
-
-[[package]]
-name = "crypto"
-version = "0.1.0"
 
 [[package]]
 name = "crypto-common"
@@ -125,10 +126,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "init"
-version = "0.1.0"
-
-[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -145,6 +142,10 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
+
+[[package]]
+name = "pool"
+version = "0.1.0"
 
 [[package]]
 name = "ppv-lite86"
@@ -227,10 +228,6 @@ name = "regex-syntax"
 version = "0.6.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "456c603be3e8d448b072f410900c09faf164fbce2d480456f50eea6e25f9c848"
-
-[[package]]
-name = "router"
-version = "0.1.0"
 
 [[package]]
 name = "subtle"

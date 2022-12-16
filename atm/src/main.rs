@@ -1,8 +1,9 @@
-use std::{env, io::{self, Write}, net::{TcpStream, TcpListener}};
+use std::{env, io::{self, Write, Result}, net::TcpStream};
 
 use rand::{rngs::OsRng, RngCore};
 use x25519_dalek::{StaticSecret, PublicKey};
 
+/* import atm structure */
 mod atm;
 use crate::atm::ATM;
 
@@ -15,8 +16,7 @@ use crate::atm::ATM;
 //  XChaCha20-Poly1305  v0.10.1  for encryption: https://docs.rs/chacha20poly1305/latest/chacha20poly1305/
 
 /* define program constants */
-const ROUTER_ADDRESS: &str = "127.0.0.1:32000";
-const ATM_ADDRESS:    &str = "127.0.0.1:32001";
+const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
 
 const XCHACHA20_POLY1305_KEY_SIZE: usize = 32usize;     // 32 byte key
 const XCHACHA20_POLY1305_NONCE_SIZE: usize = 24usize;   // 24 byte nonce
@@ -27,11 +27,11 @@ const XCHACHA20_POLY1305_NONCE_SIZE: usize = 24usize;   // 24 byte nonce
  */
 fn main() {
     // retreive command line argument iterator and convert to vec
-    let args: Vec<String> = env::args().collect();
-    if args.len() != 2 {
-        println!("\nThe ATM expects exactly one argument: a \"<>.atm\" file. Found {} arguments instead", args.len());
-        return;
-    }
+    // let args: Vec<String> = env::args().collect();
+    // if args.len() != 2 {
+    //     println!("\nThe ATM expects exactly one argument: a \"<>.atm\" file. Found {} arguments instead", args.len());
+    //     return;
+    // }
 
 
     /* generate key pair */
@@ -43,10 +43,10 @@ fn main() {
     // let private_key: StaticSecret = StaticSecret::new(OsRng);
     // let public_key: PublicKey = PublicKey::from(&private_key);
 
-    // /* open connection to the router */
-    // let mut stream: TcpStream = TcpStream::connect(ROUTER_ADDRESS).expect(
-    //     "Error trying to connect to the router"
-    // );
+    /* open connection to the bank */
+    let mut stream: TcpStream = TcpStream::connect(BANK_SERVER_ADDR).expect(
+        "Error trying to connect to the router"
+    );
 
     // let listener: TcpListener = TcpListener::bind(ATM_ADDRESS).expect(
     //     "Error creating atm listener"
@@ -67,14 +67,18 @@ fn main() {
     let mut user_input: String = String::new();
 
     print!("{}", atm.get_prompt());  // initial prompt
-    io::stdout().flush().unwrap();  // flush output buffer to terminal
+    io::stdout().flush().unwrap();   // flush output buffer to terminal
     while io::stdin().read_line(&mut user_input).expect("Failed to read line from stdin") > 0 {
         /* remove newline from user input */
         user_input.pop();
+
         /* provide exit functionality */
         if user_input == "exit" {
             break;
         }
+
+
+        stream.write(user_input.as_bytes()).unwrap();
 
 
         /* check for valid command and call appropriate helper function */
@@ -89,6 +93,13 @@ fn main() {
         }
         else if user_input == "end-session" {
             atm.process_end_session();
+        }
+        else if user_input == "help" {
+            println!("  begin-session <user-name>");
+            println!("  withdraw <amount>");
+            println!("  balance");
+            println!("  end-session");
+            println!("  exit\n");
         }
         else {
             println!("Invalid command\n");

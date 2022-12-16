@@ -5,6 +5,7 @@ use lazy_static::lazy_static;
 /* define atm constants */
 const MAX_USERNAME_SIZE: usize = 250usize;
 
+
 /*
  * defines the ATM struct
  */
@@ -21,7 +22,6 @@ pub struct ATM {
 
 impl ATM {
     /* initializer */
-    #[must_use]                                 // not exactly sure what this does
     pub fn new() -> ATM {
         ATM {
             prompt: String::from("ATM: "),
@@ -39,12 +39,9 @@ impl ATM {
     fn login_user(&mut self, username: &str) {
         self.active_user = Some(String::from(username));
         self.prompt = String::from("ATM (") + username + "): ";
-        println!("Authorized\n");
     }
+
     fn logout_user(&mut self) {
-        println!("{} was logged out\n", self.active_user.as_ref().expect(
-            "Active user should never be none when logout_user() is called"
-        ));
         self.active_user = None;
         self.prompt = String::from("ATM: ");
     }
@@ -117,6 +114,7 @@ impl ATM {
     
         /* update login state */
         self.login_user(username);
+        println!("Authorized\n");
     }
 
 
@@ -181,6 +179,9 @@ impl ATM {
             return;
         }
 
+        println!("{} was logged out\n", self.active_user.as_ref().expect(
+            "Error: active user should never be none here"
+        ));
         self.logout_user();
     }
 }
