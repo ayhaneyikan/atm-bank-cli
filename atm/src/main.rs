@@ -48,7 +48,7 @@ fn main() {
         } else if user_input == "end-session" {
             // atm.process_end_session(&mut stream);
         } else if user_input == "help" {
-            println!("{}", ATM::get_help());
+            println!("{}", atm.get_help());
         } else {
             println!("Invalid command\n");
         }

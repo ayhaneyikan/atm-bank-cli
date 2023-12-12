@@ -44,12 +44,13 @@ impl ATM {
         }
     }
     /// Returns CLI help list
-    pub fn get_help() -> String {
-        "  begin-session <user-name>\n".to_string()
-            + "  withdraw <amount>\n"
-            + "  balance\n"
-            + "  end-session\n"
-            + "  exit\n"
+    pub fn get_help(&self) -> String {
+        match self.state {
+            ATMState::BASE => "  begin-session <user-name>\n".to_string() + "  exit\n",
+            ATMState::LOGGED(_) => {
+                "  withdraw <amount>\n".to_string() + "  balance\n" + "  end-session\n" + "  exit\n"
+            }
+        }
     }
 
     /// Updates ATM state after a user requests a login
@@ -141,9 +142,7 @@ impl ATM {
         while let Err(_) = self.recv_message(&mut resp) {}
 
         println!("{:?}", str::from_utf8(&resp).unwrap());
-
     }
-
 
     //     /* attempt to begin a user session */
     //     pub fn process_begin_session(&mut self, user_input: &String, stream: &mut TcpStream) {
