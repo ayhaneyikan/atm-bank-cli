@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 regex = "1"
 lazy_static = "1.4.0"
-rand = "0.7"
-x25519-dalek = "1.2.0"
+rand = "0.8.5"
 blake2 = "0.10.5"
+common = { path = "../common" }
