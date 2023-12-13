@@ -1,6 +1,7 @@
 use common::crypto::{
     CryptoState, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
 };
+use common::io::RequestType;
 use lazy_static::lazy_static;
 use regex::{Captures, Regex};
 use std::str;
@@ -45,29 +46,48 @@ impl ATM {
         }
     }
     /// Returns CLI help list
-    fn get_help_display(&self) -> String {
+    pub fn get_help_display(&self) -> String {
         match self.state {
-            ATMState::BASE => "  begin-session <user-name>\n".to_string() + "  exit\n",
+            ATMState::BASE => "  begin-session <user-name> <PIN>\n".to_string() + "  help\n" + "  exit",
             ATMState::LOGGED(_) => {
-                "  withdraw <amount>\n".to_string() + "  balance\n" + "  end-session\n" + "  exit\n"
+                "  withdraw <amount>\n".to_string()
+                    + "  balance\n"
+                    + "  end-session\n"
+                    + "  help\n"
+                    + "  exit"
             }
         }
     }
-    /// Processes user input based on content
+    /// Processes user input based on content.
+    /// Limits accessibility of certain commands based on state.
     pub fn process_input(&mut self, input: &str) {
-        if input.starts_with("begin-session") {
-            self.begin_session(&input);
-            // atm.process_begin_session(&user_input, &mut stream); /* DO THIS FOR OTHERS */
-        } else if input.starts_with("withdraw") {
-            // atm.process_withdraw(&user_input, &mut stream);
-        } else if input == "balance" {
-            // atm.process_balance(&mut stream);
-        } else if input == "end-session" {
-            // atm.process_end_session(&mut stream);
-        } else if input == "help" {
-            println!("{}", self.get_help_display());
-        } else {
-            println!("Invalid command\n");
+        match self.state {
+            ATMState::BASE => {
+                if input.starts_with("begin-session") {
+                    if input.trim() == "begin-session" {
+                        println!("Usage: begin-session <user-name> <PIN>");
+                        return;
+                    }
+                    self.begin_session(input);
+                } else if input == "help" {
+                    println!("{}", self.get_help_display());
+                } else {
+                    println!("Invalid command. Use `help` to see options.");
+                }
+            }
+            ATMState::LOGGED(_) => {
+                if input.starts_with("withdraw") {
+                    // atm.process_withdraw(&user_input, &mut stream);
+                } else if input == "balance" {
+                    // atm.process_balance(&mut stream);
+                } else if input == "end-session" {
+                    // atm.process_end_session(&mut stream);
+                } else if input == "help" {
+                    println!("{}", self.get_help_display());
+                } else {
+                    println!("Invalid command. Use `help` to see options.");
+                }
+            }
         }
     }
 
@@ -102,38 +122,29 @@ impl ATM {
     //
     // methods for processing commands
 
-    /// Handles user request to begin authenticated session with the bank
+    /// Handles user request to begin authenticated session with the bank.
+    /// This method cannot be reached if a user is already logged in.
     fn begin_session(&mut self, user_input: &str) {
-        if user_input == "begin-session" {
-            println!("Usage: begin-session <user-name>");
-        }
-
-        // verify no user is logged in
-        // TODO: evaluate if this is even a sensible option for a command
-        if self.is_active_user() {
-            println!("A session is currently active\n");
-            return;
-        }
-
         // create static regular expression (cached to avoid re-creations)
         lazy_static! {
-            static ref RE: Regex = Regex::new("^begin-session ([a-zA-Z]+)$")
+            static ref BS_RE: Regex = Regex::new("^begin-session ([a-zA-Z0-9]+) ([0-9]{4})$")
                 .expect("Error while compiling begin-session regular expression");
         }
 
         // early exit if invalid command
-        if !RE.is_match(user_input) {
-            println!("Usage: begin-session <user-name>\n");
-            println!("Help:  usernames may only contain letters\n");
+        if !BS_RE.is_match(user_input) {
+            println!("Usage: begin-session <user-name> <PIN>\n");
             return;
         }
 
         //
-        // confirm user existance with bank
+        // extract fields from input
 
-        // extract username
-        let caps: Captures = RE.captures(user_input).unwrap();
-        let username: &str = caps.get(1).unwrap().as_str();
+        // extract username and PIN
+        let caps = BS_RE.captures(user_input).unwrap();
+        let username = caps.get(1).unwrap().as_str();
+        let pin = caps.get(2).unwrap().as_str();
+        // PIN length is fixed
         // validate username length
         if username.len() > MAX_USERNAME_SIZE {
             println!(
@@ -143,77 +154,44 @@ impl ATM {
             return;
         }
 
-        // construct plaintext (skip 0th which represents request type)
+        //
+        // construct and send authentication request
+
         let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
+        // set message type
+        plaintext[0] = RequestType::AuthUser as u8;
+        // add username
         for i in 0..username.len() {
             plaintext[i + USERNAME_START_IDX] = username.as_bytes()[i];
         }
+        // add PIN
+        for i in 0..pin.len() {
+            plaintext[i + PIN_START_IDX] = pin.as_bytes()[i];
+        }
+
+        // TODO encrypt prior to send
         // send plaintext to bank
         self.stream.write(&plaintext).unwrap();
 
         // receive response
         let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
         self.stream.read(&mut resp).unwrap();
+        // TODO decrypt after receive
 
+        // TODO include trim as part of decryption process
         let resp = str::from_utf8(&resp)
             .unwrap()
             .trim_end_matches(|c| c == '\0');
 
         if resp != "success" {
-            println!("No such user\n");
-            return;
-        }
-
-        //
-        // request PIN from user
-
-        // prompt for PIN
-        print!("  PIN: ");
-        io::stdout().flush().unwrap(); // flush prompt
-
-        // read PIN
-        let mut pin: String = String::new();
-        io::stdin()
-            .read_line(&mut pin)
-            .expect("Failed to read PIN from stdin");
-        pin.pop(); // remove newline
-
-        // check if PIN matches
-        lazy_static! {
-            static ref PIN_RE: Regex = Regex::new("^[0-9]{4}$").unwrap();
-        }
-        if !PIN_RE.is_match(&pin) {
-            println!("PINs must be exactly {} numbers", PIN_SIZE);
-            return;
-        }
-
-        //
-        // attempt to authenticate user PIN with bank
-
-        // construct plaintext
-        plaintext = [0u8; MAX_PLAINTEXT_SIZE];
-        for i in 0..pin.len() {
-            plaintext[i + PIN_START_IDX] = pin.as_bytes()[i];
-        }
-        // send plaintext over
-        self.stream.write(&plaintext).unwrap();
-
-        // receive response
-        let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
-        self.stream.read(&mut resp).unwrap();
-
-        let resp = str::from_utf8(&resp)
-            .unwrap()
-            .trim_end_matches(|c| c == '\0');
-
-        if resp != "success" {
-            println!("Authentication failed.");
+            println!("Authentication failed");
             return;
         }
 
         // update login state
         self.state = ATMState::LOGGED(username.to_string());
         println!("Authorization successful");
+        println!("Available commands:\n{}", self.get_help_display());
     }
 
     //     /* attempt to begin a user session */

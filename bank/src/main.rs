@@ -132,20 +132,8 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut stream: TcpStream) {
         let bank = bank.lock().unwrap();
 
         match RequestType::try_from(buffer[0]) {
-            Ok(RequestType::UserExists) => {
-                // extract username and trim null bytes
-                let username = str::from_utf8(&buffer[USERNAME_START_IDX..=USERNAME_END_IDX])
-                    .unwrap()
-                    .trim_end_matches(|c| c == '\0');
-                // determine response
-                let response = match bank.is_existing_user(username) {
-                    true => "success".as_bytes(),
-                    false => "failure".as_bytes(),
-                };
-                // send response
-                stream.write(&response).unwrap();
-            }
-            Ok(RequestType::UserPIN) => {
+            Ok(RequestType::AuthUser) => {
+                // TODO decryption and abstract trims
                 // extract username and trim null bytes
                 let username = str::from_utf8(&buffer[USERNAME_START_IDX..=USERNAME_END_IDX])
                     .unwrap()
@@ -157,11 +145,12 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut stream: TcpStream) {
                     .parse()
                     .unwrap();
                 // determine response
-                let response = match bank.is_valid_pin(username, pin) {
+                let response = match bank.attempt_authentication(username, pin) {
                     true => "success".as_bytes(),
                     false => "failure".as_bytes(),
                 };
                 // send response
+                // TODO encrypt response
                 stream.write(&response).unwrap();
             }
             Err(_) => println!("Invalid ATM request type received"),

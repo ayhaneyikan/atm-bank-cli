@@ -44,9 +44,10 @@ impl Bank {
     pub fn is_existing_user(&self, username: &str) -> bool {
         self.users.contains_key(username)
     }
-    pub fn is_valid_pin(&self, username: &str, pin: u16) -> bool {
+    /// Attempts to authenticate the given user with the given pin
+    pub fn attempt_authentication(&self, username: &str, pin: u16) -> bool {
         match self.users.get(username) {
-            Some(u) => u.pin == pin,
+            Some(user) => user.pin == pin,
             None => false,
         }
     }

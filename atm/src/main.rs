@@ -19,7 +19,8 @@ fn main() {
     let mut atm = ATM::new(BANK_SERVER_ADDR);
 
     // print initial prompt and flush buffer to terminal
-    print!("{}", atm.get_prompt());
+    println!("\nAvailable commands:\n{}", atm.get_help_display());
+    print!("\n{}", atm.get_prompt());
     io::stdout().flush().unwrap();
 
     // user input buffer
@@ -35,10 +36,10 @@ fn main() {
             break;
         }
 
-        atm.process_input(&user_input);
+        atm.process_input(&user_input.trim());
 
         // reprompt user
-        print!("{}", atm.get_prompt());
+        print!("\n{}", atm.get_prompt());
         io::stdout().flush().unwrap();
         // clear user input buffer before next read
         user_input.clear();
