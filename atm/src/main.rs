@@ -1,5 +1,6 @@
 mod atm;
 use crate::atm::ATM;
+use common::io::BANK_SERVER_ADDR;
 use std::io::{self, Write};
 
 // for encryption sources see:
@@ -12,9 +13,6 @@ use std::io::{self, Write};
 
 //
 // program constants
-
-/// TCP address of the bank server
-const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
 
 /// ATM entrypoint
 fn main() {
@@ -37,21 +35,7 @@ fn main() {
             break;
         }
 
-        // process given command
-        if user_input.starts_with("begin-session") {
-            atm.begin_session(&user_input);
-            // atm.process_begin_session(&user_input, &mut stream); /* DO THIS FOR OTHERS */
-        } else if user_input.starts_with("withdraw") {
-            // atm.process_withdraw(&user_input, &mut stream);
-        } else if user_input == "balance" {
-            // atm.process_balance(&mut stream);
-        } else if user_input == "end-session" {
-            // atm.process_end_session(&mut stream);
-        } else if user_input == "help" {
-            println!("{}", atm.get_help());
-        } else {
-            println!("Invalid command\n");
-        }
+        atm.process_input(&user_input);
 
         // reprompt user
         print!("{}", atm.get_prompt());

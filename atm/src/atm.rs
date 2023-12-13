@@ -1,4 +1,6 @@
-use common::crypto::CryptoState;
+use common::crypto::{
+    CryptoState, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
+};
 use lazy_static::lazy_static;
 use regex::{Captures, Regex};
 use std::str;
@@ -6,10 +8,6 @@ use std::{
     io::{self, Read, Write},
     net::TcpStream,
 };
-
-// ATM constants
-const MAX_USERNAME_SIZE: usize = 250;
-const MAX_PLAINTEXT_SIZE: usize = MAX_USERNAME_SIZE + 1;
 
 type Username = String;
 
@@ -36,6 +34,9 @@ impl ATM {
         }
     }
 
+    //
+    // prompt retreival helpers and input processing
+
     /// Returns CLI prompt based on current ATM state
     pub fn get_prompt(&self) -> String {
         match &self.state {
@@ -44,7 +45,7 @@ impl ATM {
         }
     }
     /// Returns CLI help list
-    pub fn get_help(&self) -> String {
+    fn get_help_display(&self) -> String {
         match self.state {
             ATMState::BASE => "  begin-session <user-name>\n".to_string() + "  exit\n",
             ATMState::LOGGED(_) => {
@@ -52,6 +53,26 @@ impl ATM {
             }
         }
     }
+    /// Processes user input based on content
+    pub fn process_input(&mut self, input: &str) {
+        if input.starts_with("begin-session") {
+            self.begin_session(&input);
+            // atm.process_begin_session(&user_input, &mut stream); /* DO THIS FOR OTHERS */
+        } else if input.starts_with("withdraw") {
+            // atm.process_withdraw(&user_input, &mut stream);
+        } else if input == "balance" {
+            // atm.process_balance(&mut stream);
+        } else if input == "end-session" {
+            // atm.process_end_session(&mut stream);
+        } else if input == "help" {
+            println!("{}", self.get_help_display());
+        } else {
+            println!("Invalid command\n");
+        }
+    }
+
+    //
+    // helpers for managing atm logic
 
     /// Updates ATM state after a user requests a login
     fn login_user(&mut self, username: &str) {
@@ -78,22 +99,17 @@ impl ATM {
         }
     }
 
-    /// sends message by writing into the provided TcpStream
-    ///
-    /// returns Result indicating success status of the write
-    fn send_message(&mut self, plaintext: &[u8]) -> Result<usize, std::io::Error> {
-        self.stream.write(plaintext)
-    }
-    /// receives message by reading from the provided TcpStream
-    ///
-    /// returns Result indicating success status of the read
-    fn recv_message(&mut self, response: &mut [u8]) -> Result<usize, std::io::Error> {
-        self.stream.read(response)
-    }
+    //
+    // methods for processing commands
 
     /// Handles user request to begin authenticated session with the bank
-    pub fn begin_session(&mut self, user_input: &str) {
+    fn begin_session(&mut self, user_input: &str) {
+        if user_input == "begin-session" {
+            println!("Usage: begin-session <user-name>");
+        }
+
         // verify no user is logged in
+        // TODO: evaluate if this is even a sensible option for a command
         if self.is_active_user() {
             println!("A session is currently active\n");
             return;
@@ -107,10 +123,13 @@ impl ATM {
 
         // early exit if invalid command
         if !RE.is_match(user_input) {
-            println!("Usage: begin-session <user-name>");
-            println!("Note:  usernames may only contain letters\n");
+            println!("Usage: begin-session <user-name>\n");
+            println!("Help:  usernames may only contain letters\n");
             return;
         }
+
+        //
+        // confirm user existance with bank
 
         // extract username
         let caps: Captures = RE.captures(user_input).unwrap();
@@ -124,24 +143,77 @@ impl ATM {
             return;
         }
 
-        //
-        // communicate with bank
-
-        // construct plaintext
-        // TODO: what was the 0th plaintext char for again
+        // construct plaintext (skip 0th which represents request type)
         let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
         for i in 0..username.len() {
-            plaintext[i + 1] = username.as_bytes()[i];
+            plaintext[i + USERNAME_START_IDX] = username.as_bytes()[i];
         }
         // send plaintext to bank
-        while let Err(_) = self.send_message(&plaintext) {}
+        self.stream.write(&plaintext).unwrap();
 
         // receive response
-        // TODO: bank not properly sending user existance
         let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
-        while let Err(_) = self.recv_message(&mut resp) {}
+        self.stream.read(&mut resp).unwrap();
 
-        println!("{:?}", str::from_utf8(&resp).unwrap());
+        let resp = str::from_utf8(&resp)
+            .unwrap()
+            .trim_end_matches(|c| c == '\0');
+
+        if resp != "success" {
+            println!("No such user\n");
+            return;
+        }
+
+        //
+        // request PIN from user
+
+        // prompt for PIN
+        print!("  PIN: ");
+        io::stdout().flush().unwrap(); // flush prompt
+
+        // read PIN
+        let mut pin: String = String::new();
+        io::stdin()
+            .read_line(&mut pin)
+            .expect("Failed to read PIN from stdin");
+        pin.pop(); // remove newline
+
+        // check if PIN matches
+        lazy_static! {
+            static ref PIN_RE: Regex = Regex::new("^[0-9]{4}$").unwrap();
+        }
+        if !PIN_RE.is_match(&pin) {
+            println!("PINs must be exactly {} numbers", PIN_SIZE);
+            return;
+        }
+
+        //
+        // attempt to authenticate user PIN with bank
+
+        // construct plaintext
+        plaintext = [0u8; MAX_PLAINTEXT_SIZE];
+        for i in 0..pin.len() {
+            plaintext[i + PIN_START_IDX] = pin.as_bytes()[i];
+        }
+        // send plaintext over
+        self.stream.write(&plaintext).unwrap();
+
+        // receive response
+        let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
+        self.stream.read(&mut resp).unwrap();
+
+        let resp = str::from_utf8(&resp)
+            .unwrap()
+            .trim_end_matches(|c| c == '\0');
+
+        if resp != "success" {
+            println!("Authentication failed.");
+            return;
+        }
+
+        // update login state
+        self.state = ATMState::LOGGED(username.to_string());
+        println!("Authorization successful");
     }
 
     //     /* attempt to begin a user session */

@@ -26,6 +26,7 @@ dependencies = [
 name = "bank"
 version = "0.1.0"
 dependencies = [
+ "common",
  "lazy_static",
  "pool",
  "regex",
