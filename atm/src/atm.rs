@@ -94,23 +94,6 @@ impl ATM {
     //
     // helpers for managing atm logic
 
-    /// Updates ATM state after a user requests a login
-    fn login_user(&mut self, username: &str) {
-        if matches!(self.state, ATMState::BASE) {
-            // TODO: make login request to bank
-            self.state = ATMState::LOGGED(username.to_string());
-        }
-        // TODO: revisit this edge: case login after logged in
-    }
-
-    /// Updates ATM state after a user logs out
-    fn logout_user(&mut self) {
-        if matches!(self.state, ATMState::LOGGED(_)) {
-            // TODO: any communication necessary with bank?
-            self.state = ATMState::BASE;
-        }
-    }
-
     /// Returns bool indicating whether there is an active user
     fn is_active_user(&self) -> bool {
         match self.state {
