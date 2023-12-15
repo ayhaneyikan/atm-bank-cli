@@ -4,7 +4,7 @@ use std::{
     str,
 };
 
-use crate::crypto::MAX_PLAINTEXT_SIZE;
+use crate::crypto::{COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MESSAGE_TYPE_IDX};
 
 pub const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
 
@@ -32,6 +32,18 @@ impl TryFrom<u8> for RequestType {
             4 => Ok(Self::End),
             _ => Err(()),
         }
+    }
+}
+
+pub fn create_plaintext(comm_count: u8, request: RequestType) -> [u8; MAX_PLAINTEXT_SIZE] {
+    let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
+    plaintext[COMM_COUNTER_IDX] = comm_count;
+    plaintext[MESSAGE_TYPE_IDX] = request as u8;
+    plaintext
+}
+pub fn insert_bytes_into_plaintext(plaintext: &mut [u8], bytes: &[u8], offset: usize) {
+    for i in 0..bytes.len() {
+        plaintext[i + offset] = bytes[i];
     }
 }
 

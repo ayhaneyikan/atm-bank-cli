@@ -3,7 +3,10 @@ use common::{
         CryptoState, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, MESSAGE_START_IDX,
         MESSAGE_TYPE_IDX, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
     },
-    io::{RequestType, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
+    io::{
+        create_plaintext, insert_bytes_into_plaintext, RequestType, StreamManager, AUTH_SUCCESS,
+        BANK_SERVER_ADDR,
+    },
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -81,7 +84,7 @@ impl ATM {
                 } else if input == "balance" {
                     self.balance();
                 } else if input == "end-session" {
-                    // atm.process_end_session(&mut stream);
+                    self.end_session();
                 } else if input == "help" {
                     println!("{}", self.get_help_display());
                 } else {
@@ -140,18 +143,9 @@ impl ATM {
         //
         // construct and send authentication request
 
-        let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
-
-        plaintext[COMM_COUNTER_IDX] = self.comm_count;
-        plaintext[MESSAGE_TYPE_IDX] = RequestType::AuthUser as u8;
-        // add username
-        for i in 0..username.len() {
-            plaintext[i + USERNAME_START_IDX] = username.as_bytes()[i];
-        }
-        // add PIN
-        for i in 0..pin.len() {
-            plaintext[i + PIN_START_IDX] = pin.as_bytes()[i];
-        }
+        let mut plaintext = create_plaintext(self.comm_count, RequestType::AuthUser);
+        insert_bytes_into_plaintext(&mut plaintext, username.as_bytes(), USERNAME_START_IDX);
+        insert_bytes_into_plaintext(&mut plaintext, pin.as_bytes(), PIN_START_IDX);
 
         // TODO encrypt prior to send
         // send plaintext to bank
@@ -161,6 +155,7 @@ impl ATM {
         // receive response
         let mut response = [0u8; MAX_PLAINTEXT_SIZE];
         self.stream.receive(&mut response).unwrap();
+        // TODO handle bank thread exiting due to stale connection
         if response[COMM_COUNTER_IDX] != self.comm_count {
             println!("Connection has become stale. Exiting ATM.");
             std::process::exit(1);
@@ -181,6 +176,24 @@ impl ATM {
     /// Handles user request to retreive balance information from bank.
     /// This method can only be reached if a user is logged in.
     fn balance(&self) {}
+
+    fn end_session(&mut self) {
+        let plaintext = create_plaintext(self.comm_count, RequestType::End);
+        self.stream.send(&plaintext);
+        self.comm_count += 1;
+
+        let mut response = [0u8; MAX_PLAINTEXT_SIZE];
+        self.stream.receive(&mut response).unwrap();
+        if response[COMM_COUNTER_IDX] != self.comm_count {
+            println!("Connection has become stale. Exiting ATM.");
+            std::process::exit(1);
+        }
+        self.comm_count += 1;
+
+        self.state = ATMState::BASE;
+        println!("Session ended");
+        println!("Available commands:\n{}", self.get_help_display());
+    }
 
     //     pub fn process_withdraw(&mut self, user_input: &String, stream: &mut TcpStream) {
     //         /* verify there is a user logged in */

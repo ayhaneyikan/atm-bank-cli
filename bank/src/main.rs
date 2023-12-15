@@ -119,11 +119,13 @@ fn process_local_commands(bank: Arc<Mutex<Bank>>) {
 /// Handles a remote ATM's requests
 fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) {
     // create message buffer
-    let mut buffer = [0u8; MAX_PLAINTEXT_SIZE];
+    let mut buffer;
     // tracks number of communications. Incremented after RECEIVE
     let mut comm_count: u8 = 0;
 
     loop {
+        buffer = [0u8; MAX_PLAINTEXT_SIZE];
+
         // check if stream closed
         if let Err(()) = manager.receive(&mut buffer) {
             return;
@@ -168,6 +170,11 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) 
                 // send response
                 // TODO encrypt response
                 manager.send(&response);
+                comm_count += 1;
+            }
+            Ok(RequestType::End) => {
+                buffer[COMM_COUNTER_IDX] = comm_count;
+                manager.send(&buffer);
                 comm_count += 1;
             }
             Ok(_) => todo!(),
