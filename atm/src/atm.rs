@@ -1,14 +1,12 @@
-use common::crypto::{
-    CryptoState, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
+use common::{
+    crypto::{
+        CryptoState, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, MESSAGE_START_IDX,
+        MESSAGE_TYPE_IDX, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
+    },
+    io::{RequestType, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
 };
-use common::io::RequestType;
 use lazy_static::lazy_static;
-use regex::{Captures, Regex};
-use std::str;
-use std::{
-    io::{self, Read, Write},
-    net::TcpStream,
-};
+use regex::Regex;
 
 type Username = String;
 
@@ -20,18 +18,18 @@ enum ATMState {
 /// Maintains ATM state and facilitates communications with the bank
 pub struct ATM {
     state: ATMState,
-    stream: TcpStream,
-    crypto: CryptoState,
+    stream: StreamManager,
+    /// Tracks number of communications. Incremented after SEND
+    comm_count: u8,
 }
 
 impl ATM {
     /// Create new ATM instance
-    pub fn new(bank_address: &str) -> Self {
+    pub fn new() -> Self {
         Self {
             state: ATMState::BASE,
-            stream: TcpStream::connect(bank_address)
-                .expect("Error trying to connect to the bank server"),
-            crypto: CryptoState::new(),
+            stream: StreamManager::from_addr(BANK_SERVER_ADDR),
+            comm_count: 0,
         }
     }
 
@@ -48,7 +46,9 @@ impl ATM {
     /// Returns CLI help list
     pub fn get_help_display(&self) -> String {
         match self.state {
-            ATMState::BASE => "  begin-session <user-name> <PIN>\n".to_string() + "  help\n" + "  exit",
+            ATMState::BASE => {
+                "  begin-session <user-name> <PIN>\n".to_string() + "  help\n" + "  exit"
+            }
             ATMState::LOGGED(_) => {
                 "  withdraw <amount>\n".to_string()
                     + "  balance\n"
@@ -79,7 +79,7 @@ impl ATM {
                 if input.starts_with("withdraw") {
                     // atm.process_withdraw(&user_input, &mut stream);
                 } else if input == "balance" {
-                    // atm.process_balance(&mut stream);
+                    self.balance();
                 } else if input == "end-session" {
                     // atm.process_end_session(&mut stream);
                 } else if input == "help" {
@@ -141,8 +141,9 @@ impl ATM {
         // construct and send authentication request
 
         let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
-        // set message type
-        plaintext[0] = RequestType::AuthUser as u8;
+
+        plaintext[COMM_COUNTER_IDX] = self.comm_count;
+        plaintext[MESSAGE_TYPE_IDX] = RequestType::AuthUser as u8;
         // add username
         for i in 0..username.len() {
             plaintext[i + USERNAME_START_IDX] = username.as_bytes()[i];
@@ -154,19 +155,19 @@ impl ATM {
 
         // TODO encrypt prior to send
         // send plaintext to bank
-        self.stream.write(&plaintext).unwrap();
+        self.stream.send(&plaintext);
+        self.comm_count += 1;
 
         // receive response
-        let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
-        self.stream.read(&mut resp).unwrap();
-        // TODO decrypt after receive
+        let mut response = [0u8; MAX_PLAINTEXT_SIZE];
+        self.stream.receive(&mut response).unwrap();
+        if response[COMM_COUNTER_IDX] != self.comm_count {
+            println!("Connection has become stale. Exiting ATM.");
+            std::process::exit(1);
+        }
+        self.comm_count += 1;
 
-        // TODO include trim as part of decryption process
-        let resp = str::from_utf8(&resp)
-            .unwrap()
-            .trim_end_matches(|c| c == '\0');
-
-        if resp != "success" {
+        if response[MESSAGE_START_IDX] != AUTH_SUCCESS {
             println!("Authentication failed");
             return;
         }
@@ -177,90 +178,9 @@ impl ATM {
         println!("Available commands:\n{}", self.get_help_display());
     }
 
-    //     /* attempt to begin a user session */
-    //     pub fn process_begin_session(&mut self, user_input: &String, stream: &mut TcpStream) {
-    //         /* verify that no user is already logged in */
-    //         if self.is_active_user() {
-    //             println!("A user is already logged in\n");
-    //             return;
-    //         }
-
-    //         /* create static regular expression (creates it at most once) */
-    //         lazy_static! {
-    //             static ref RE: Regex = Regex::new("^begin-session ([a-zA-Z]+)$")
-    //                 .expect("Error while compiling begin-session regular expression");
-    //         }
-
-    //         /* ensure input matches */
-    //         if !RE.is_match(user_input) {
-    //             println!("Usage: begin-session <user-name>\n");
-    //             return;
-    //         }
-    //         /* valid match */
-    //         /* extract username from matched string */
-    //         let caps: Captures = RE.captures(user_input).unwrap();
-    //         let username: &str = caps.get(1).unwrap().as_str();
-    //         /* check if username is within max size */
-    //         if username.len() > MAX_USERNAME_SIZE {
-    //             println!(
-    //                 "Error: username must be {} characters or less\n",
-    //                 MAX_USERNAME_SIZE
-    //             );
-    //             return;
-    //         }
-
-    //         /* check if they exist communiate with bank */
-    //         /* construct plaintext */
-    //         let mut plaintext = [0u8; MAX_PLAINTEXT_SIZE];
-
-    //         for i in 0..username.len() {
-    //             plaintext[i + 1] = username.as_bytes()[i];
-    //         }
-
-    //         /* send plaintext to bank */
-    //         while let Err(_) = ATM::send_message(&plaintext, stream) {}
-
-    //         /* listen for response */
-    //         let mut resp = [0u8; MAX_PLAINTEXT_SIZE];
-    //         while let Err(_) = ATM::recv_message(&mut resp, stream) {}
-
-    //         println!("{:?}", str::from_utf8(&resp).unwrap());
-
-    //         if resp != "success".as_bytes() {
-    //             println!("No such user\n");
-    //             return;
-    //         }
-
-    //         /* prompt for PIN */
-    //         print!("  PIN: ");
-    //         io::stdout().flush().unwrap(); // flush prompt
-    //                                        /* capture PIN */
-    //         let mut pin: String = String::new();
-    //         io::stdin()
-    //             .read_line(&mut pin)
-    //             .expect("Failed to read PIN from stdin");
-    //         pin.pop(); // remove newline
-    //                    /* check if provided PIN matches */
-    //         let failed_authorization: String = String::from("Not authorized\n");
-    //         lazy_static! {
-    //             static ref PIN_RE: Regex = Regex::new("^[0-9]{4}$").unwrap();
-    //         }
-    //         if !PIN_RE.is_match(&pin) {
-    //             println!("{}", failed_authorization);
-    //             return;
-    //         }
-
-    //         /* validate PIN with bank */
-    //  /* TEMP */
-    //         if pin != "1188" {
-    //             println!("{}", failed_authorization);
-    //             return;
-    //         }
-
-    //         /* update login state */
-    //         self.login_user(username);
-    //         println!("Authorized\n");
-    //     }
+    /// Handles user request to retreive balance information from bank.
+    /// This method can only be reached if a user is logged in.
+    fn balance(&self) {}
 
     //     pub fn process_withdraw(&mut self, user_input: &String, stream: &mut TcpStream) {
     //         /* verify there is a user logged in */

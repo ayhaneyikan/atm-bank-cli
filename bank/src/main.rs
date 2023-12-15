@@ -1,10 +1,11 @@
 mod bank;
 use common::{
     crypto::{
-        MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, PIN_END_IDX, PIN_SIZE, PIN_START_IDX,
+        COMM_COUNTER_IDX, MAX_COMM_COUNTER, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE,
+        MESSAGE_START_IDX, MESSAGE_TYPE_IDX, PIN_END_IDX, PIN_SIZE, PIN_START_IDX,
         USERNAME_END_IDX, USERNAME_START_IDX,
     },
-    io::{RequestType, BANK_SERVER_ADDR},
+    io::{RequestType, StreamManager, AUTH_FAILURE, AUTH_SUCCESS, BANK_SERVER_ADDR},
 };
 use regex::bytes;
 
@@ -46,7 +47,7 @@ fn main() {
                 // spawn thread to handle this connection
                 let bank_clone = bank.clone();
                 remote_threads.push(thread::spawn(|| {
-                    handle_remote_connection(bank_clone, stream)
+                    handle_remote_connection(bank_clone, StreamManager::from_stream(stream))
                 }));
             }
         }
@@ -116,22 +117,34 @@ fn process_local_commands(bank: Arc<Mutex<Bank>>) {
 }
 
 /// Handles a remote ATM's requests
-fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut stream: TcpStream) {
-    println!("Incoming connection from: {:?}", stream.peer_addr());
-
+fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) {
     // create message buffer
-    let mut buffer = [0u8; 512];
+    let mut buffer = [0u8; MAX_PLAINTEXT_SIZE];
+    // tracks number of communications. Incremented after RECEIVE
+    let mut comm_count: u8 = 0;
 
     loop {
-        let bytes_read = stream.read(&mut buffer).unwrap_or(0);
-
-        if bytes_read == 0 {
+        // check if stream closed
+        if let Err(()) = manager.receive(&mut buffer) {
             return;
         }
 
+        // check for stale communication channel
+        if buffer[COMM_COUNTER_IDX] >= MAX_COMM_COUNTER {
+            // TODO send stale message, close stream, end thread
+            todo!();
+        }
+        // check for replay or drop
+        if buffer[COMM_COUNTER_IDX] != comm_count {
+            // TODO send stale message, close stream, end thread
+            todo!();
+        }
+
+        comm_count += 1;
+
         let bank = bank.lock().unwrap();
 
-        match RequestType::try_from(buffer[0]) {
+        match RequestType::try_from(buffer[MESSAGE_TYPE_IDX]) {
             Ok(RequestType::AuthUser) => {
                 // TODO decryption and abstract trims
                 // extract username and trim null bytes
@@ -144,16 +157,20 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut stream: TcpStream) {
                     .trim_end_matches(|c| c == '\0')
                     .parse()
                     .unwrap();
-                // determine response
-                let response = match bank.attempt_authentication(username, pin) {
-                    true => "success".as_bytes(),
-                    false => "failure".as_bytes(),
+
+                // create response
+                let mut response = [0u8; MAX_PLAINTEXT_SIZE];
+                response[COMM_COUNTER_IDX] = comm_count;
+                response[MESSAGE_START_IDX] = match bank.attempt_authentication(username, pin) {
+                    true => AUTH_SUCCESS,
+                    false => AUTH_FAILURE,
                 };
                 // send response
                 // TODO encrypt response
-                stream.write(&response).unwrap();
+                manager.send(&response);
+                comm_count += 1;
             }
-            Err(_) => println!("Invalid ATM request type received"),
+            Err(_) => (),
         }
     }
 }

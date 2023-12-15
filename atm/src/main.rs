@@ -1,11 +1,10 @@
 mod atm;
 use crate::atm::ATM;
-use common::io::BANK_SERVER_ADDR;
 use std::io::{self, Write};
 
 /// ATM entrypoint
 fn main() {
-    let mut atm = ATM::new(BANK_SERVER_ADDR);
+    let mut atm = ATM::new();
 
     // print initial prompt and flush buffer to terminal
     println!("\nAvailable commands:\n{}", atm.get_help_display());
