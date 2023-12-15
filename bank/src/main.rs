@@ -170,6 +170,7 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) 
                 manager.send(&response);
                 comm_count += 1;
             }
+            Ok(_) => todo!(),
             Err(_) => (),
         }
     }

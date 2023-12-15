@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read, Write, Error},
+    io::{self, Error, Read, Write},
     net::TcpStream,
     str,
 };
@@ -14,6 +14,10 @@ pub const AUTH_FAILURE: u8 = 1;
 #[repr(u8)]
 pub enum RequestType {
     AuthUser,
+    Balance,
+    Withdraw,
+    Deposit,
+    End,
 }
 
 impl TryFrom<u8> for RequestType {
@@ -22,6 +26,10 @@ impl TryFrom<u8> for RequestType {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(Self::AuthUser),
+            1 => Ok(Self::Balance),
+            2 => Ok(Self::Withdraw),
+            3 => Ok(Self::Deposit),
+            4 => Ok(Self::End),
             _ => Err(()),
         }
     }
