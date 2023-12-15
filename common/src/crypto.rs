@@ -11,29 +11,41 @@ use x25519_dalek::{EphemeralSecret, PublicKey};
 //
 // Message constants
 
-// Example message
-// byte # | purpose
-// 0        communicating atm request type
-// 1-20     username up to 20 characters
-// 21-24    pin exactly 4 characters
+/// Index for communication counter byte
+pub const COMM_COUNTER_IDX: usize = 0;
+/// Maximum communication couter value
+pub const MAX_COMM_COUNTER: u8 = u8::MAX - 2;
 
-/// Maximum length of a username
+/// Index for message type byte
+pub const MESSAGE_TYPE_IDX: usize = COMM_COUNTER_IDX + 1;
+
+/// Index for start of plaintext body
+pub const MESSAGE_START_IDX: usize = MESSAGE_TYPE_IDX + 1;
+/// Maximum length of message body
+pub const MESSAGE_BODY_SIZE: usize = MAX_USERNAME_SIZE + PIN_SIZE;
+
+/// Index for start of username within plaintext
+pub const USERNAME_START_IDX: usize = MESSAGE_START_IDX;
+/// Maximum length of username
 pub const MAX_USERNAME_SIZE: usize = 20;
-/// Length of a PIN
-pub const PIN_SIZE: usize = 4;
-/// Maximum length of an entire plaintext
-pub const MAX_PLAINTEXT_SIZE: usize = 1 + MAX_USERNAME_SIZE + PIN_SIZE;
-/// Starting index of username within plaintext
-pub const USERNAME_START_IDX: usize = 1;
-/// Starting index of pin within plaintext
-pub const PIN_START_IDX: usize = 21;
-/// End index of username within plaintext. Meant to be used INCLUSIVELY
+/// Index for end of username within plaintext
 pub const USERNAME_END_IDX: usize = USERNAME_START_IDX + MAX_USERNAME_SIZE - 1;
-/// End index of pin within plaintext. Meant to be used INCLUSIVELY
+
+/// Index for start of PIN within plaintext
+pub const PIN_START_IDX: usize = USERNAME_START_IDX + MAX_USERNAME_SIZE;
+/// Length of PIN
+pub const PIN_SIZE: usize = 4;
+/// Index for end of PIN within plaintext
 pub const PIN_END_IDX: usize = PIN_START_IDX + PIN_SIZE - 1;
 
-const XCHACHA20_POLY1305_KEY_SIZE: usize = 32usize; // 32 byte key
-const XCHACHA20_POLY1305_NONCE_SIZE: usize = 24usize; // 24 byte nonce
+/// Length of the entire plaintext
+pub const MAX_PLAINTEXT_SIZE: usize = 1 + 1 + MESSAGE_BODY_SIZE;
+
+// End message constants
+//
+
+const XCHACHA20_POLY1305_KEY_SIZE: usize = 32; // 32 byte key
+const XCHACHA20_POLY1305_NONCE_SIZE: usize = 24; // 24 byte nonce
 
 pub struct CryptoState {
     secret: EphemeralSecret,
