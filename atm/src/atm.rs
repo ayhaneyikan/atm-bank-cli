@@ -1,9 +1,6 @@
 use common::{
-    crypto::{
-        CryptoState, Plaintext, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE,
-        MESSAGE_START_IDX, MESSAGE_TYPE_IDX, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
-    },
     io::{RequestType, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
+    message::{constants::*, Plaintext},
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -141,10 +138,12 @@ impl ATM {
         // construct and send authentication request
 
         let mut plaintext = Plaintext::new(&mut self.comm_count, RequestType::AuthUser);
-        plaintext.init_auth_user(username, pin);
+        plaintext.set_auth_user(username, pin);
         self.stream.send_plaintext(plaintext);
 
-        // receive response
+        //
+        // receive and validate response
+
         let mut response = [0u8; MAX_PLAINTEXT_SIZE];
         self.stream.receive(&mut response).unwrap();
         // TODO handle bank thread exiting due to stale connection
@@ -169,6 +168,7 @@ impl ATM {
     /// This method can only be reached if a user is logged in.
     fn balance(&self) {}
 
+    /// Sends end session request to bank, receives confirmation response and updates ATM state
     fn end_session(&mut self) {
         let plaintext = Plaintext::new(&mut self.comm_count, RequestType::End);
         self.stream.send_plaintext(plaintext);

@@ -1,10 +1,10 @@
 use std::{
-    io::{self, Error, Read, Write},
+    io::{Read, Write},
     net::TcpStream,
     str,
 };
 
-use crate::crypto::{Plaintext, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MESSAGE_TYPE_IDX};
+use crate::message::{constants::MAX_PLAINTEXT_SIZE, Plaintext};
 
 pub const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
 

@@ -1,19 +1,12 @@
 mod bank;
-use common::{
-    crypto::{
-        COMM_COUNTER_IDX, MAX_COMM_COUNTER, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE,
-        MESSAGE_START_IDX, MESSAGE_TYPE_IDX, PIN_END_IDX, PIN_SIZE, PIN_START_IDX,
-        USERNAME_END_IDX, USERNAME_START_IDX,
-    },
-    io::{RequestType, StreamManager, AUTH_FAILURE, AUTH_SUCCESS, BANK_SERVER_ADDR},
-};
-use regex::bytes;
-
 use crate::bank::Bank;
+use common::{
+    io::{RequestType, StreamManager, AUTH_FAILURE, AUTH_SUCCESS, BANK_SERVER_ADDR},
+    message::constants::*,
+};
 use std::{
-    io::{self, BufReader},
-    io::{Error, Read, Write},
-    net::{TcpListener, TcpStream},
+    io::{self, Write},
+    net::TcpListener,
     str,
     sync::{Arc, Mutex},
     thread,
@@ -169,12 +162,12 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) 
                 };
                 // send response
                 // TODO encrypt response
-                manager.send(&response);
+                manager.send_bytes(&response);
                 comm_count += 1;
             }
             Ok(RequestType::End) => {
                 buffer[COMM_COUNTER_IDX] = comm_count;
-                manager.send(&buffer);
+                manager.send_bytes(&buffer);
                 comm_count += 1;
             }
             Ok(_) => todo!(),
