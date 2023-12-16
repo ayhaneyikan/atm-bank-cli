@@ -1,6 +1,6 @@
 use common::{
-    io::{RequestType, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
-    message::{constants::*, Plaintext},
+    io::{errors::ReceiveError, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
+    message::{constants::*, MessageType, Plaintext, Response},
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -98,6 +98,24 @@ impl ATM {
             ATMState::LOGGED(_) => true,
         }
     }
+    /// Exits or resets the ATM session depending on error type
+    fn handle_receive_error(&mut self, e: ReceiveError) {
+        match e {
+            ReceiveError::EndOfStream | ReceiveError::StaleStream => {
+                println!("\nConnection to bank has become stale. Shutting down ATM.\n");
+                std::process::exit(1);
+            }
+            ReceiveError::InvalidCount => {
+                println!("\nConnection to bank may have been tampered with. No personal data has been exposed. Shutting down ATM.\n");
+                std::process::exit(1);
+            }
+            ReceiveError::InvalidMessage => {
+                // TODO more elegant solution to this issue perhaps?
+                println!("\nMessage received was invalid. Ending ATM session.\n");
+                self.state = ATMState::BASE;
+            }
+        }
+    }
 
     //
     // methods for processing commands
@@ -137,31 +155,34 @@ impl ATM {
         //
         // construct and send authentication request
 
-        let mut plaintext = Plaintext::new(&mut self.comm_count, RequestType::AuthUser);
+        let mut plaintext = Plaintext::new(&mut self.comm_count, MessageType::AuthUser);
         plaintext.set_auth_user(username, pin);
         self.stream.send_plaintext(plaintext);
 
         //
         // receive and validate response
 
-        let mut response = [0u8; MAX_PLAINTEXT_SIZE];
-        self.stream.receive(&mut response).unwrap();
-        // TODO handle bank thread exiting due to stale connection
-        if response[COMM_COUNTER_IDX] != self.comm_count {
-            println!("Connection has become stale. Exiting ATM.");
-            std::process::exit(1);
+        let response = match self.stream.receive(&mut self.comm_count) {
+            Err(e) => {
+                self.handle_receive_error(e);
+                return;
+            }
+            Ok(response) => response,
+        };
+        match response.get_auth_result() {
+            Err(_) => {
+                self.handle_receive_error(ReceiveError::InvalidMessage);
+            }
+            Ok(false) => {
+                println!("Authorization failed");
+            }
+            Ok(true) => {
+                // update login state
+                self.state = ATMState::LOGGED(username.to_string());
+                println!("Authorization successful");
+                println!("Available commands:\n{}", self.get_help_display());
+            }
         }
-        self.comm_count += 1;
-
-        if response[MESSAGE_START_IDX] != AUTH_SUCCESS {
-            println!("Authentication failed");
-            return;
-        }
-
-        // update login state
-        self.state = ATMState::LOGGED(username.to_string());
-        println!("Authorization successful");
-        println!("Available commands:\n{}", self.get_help_display());
     }
 
     /// Handles user request to retreive balance information from bank.
@@ -170,20 +191,19 @@ impl ATM {
 
     /// Sends end session request to bank, receives confirmation response and updates ATM state
     fn end_session(&mut self) {
-        let plaintext = Plaintext::new(&mut self.comm_count, RequestType::End);
+        let plaintext = Plaintext::new(&mut self.comm_count, MessageType::End);
         self.stream.send_plaintext(plaintext);
 
-        let mut response = [0u8; MAX_PLAINTEXT_SIZE];
-        self.stream.receive(&mut response).unwrap();
-        if response[COMM_COUNTER_IDX] != self.comm_count {
-            println!("Connection has become stale. Exiting ATM.");
-            std::process::exit(1);
+        match self.stream.receive(&mut self.comm_count) {
+            Err(e) => {
+                self.handle_receive_error(e);
+            }
+            Ok(_) => {
+                self.state = ATMState::BASE;
+                println!("Session ended");
+                println!("Available commands:\n{}", self.get_help_display());
+            }
         }
-        self.comm_count += 1;
-
-        self.state = ATMState::BASE;
-        println!("Session ended");
-        println!("Available commands:\n{}", self.get_help_display());
     }
 
     //     pub fn process_withdraw(&mut self, user_input: &String, stream: &mut TcpStream) {

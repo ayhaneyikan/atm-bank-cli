@@ -1,13 +1,12 @@
 mod bank;
 use crate::bank::Bank;
 use common::{
-    io::{RequestType, StreamManager, AUTH_FAILURE, AUTH_SUCCESS, BANK_SERVER_ADDR},
-    message::constants::*,
+    io::{errors::ReceiveError, StreamManager, BANK_SERVER_ADDR},
+    message::{MessageType, Plaintext},
 };
 use std::{
     io::{self, Write},
     net::TcpListener,
-    str,
     sync::{Arc, Mutex},
     thread,
 };
@@ -111,67 +110,44 @@ fn process_local_commands(bank: Arc<Mutex<Bank>>) {
 
 /// Handles a remote ATM's requests
 fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) {
-    // create message buffer
-    let mut buffer;
-    // tracks number of communications. Incremented after RECEIVE
+    // tracks number of communications
     let mut comm_count: u8 = 0;
 
     loop {
-        buffer = [0u8; MAX_PLAINTEXT_SIZE];
-
-        // check if stream closed
-        if let Err(()) = manager.receive(&mut buffer) {
-            return;
-        }
-
-        // check for stale communication channel
-        if buffer[COMM_COUNTER_IDX] >= MAX_COMM_COUNTER {
-            // TODO send stale message, close stream, end thread
-            todo!();
-        }
-        // check for replay or drop
-        if buffer[COMM_COUNTER_IDX] != comm_count {
-            // TODO send stale message, close stream, end thread
-            todo!();
-        }
-
-        comm_count += 1;
+        // receive response and handle possible errors
+        let response = match manager.receive(&mut comm_count) {
+            Err(ReceiveError::EndOfStream) => return,
+            Err(_) => {
+                // // send stale response and exit
+                // let response = Plaintext::new(&mut comm_count, MessageType::Stale);
+                // manager.send_plaintext(response);
+                return;
+            }
+            Ok(response) => response,
+        };
 
         let bank = bank.lock().unwrap();
 
-        match RequestType::try_from(buffer[MESSAGE_TYPE_IDX]) {
-            Ok(RequestType::AuthUser) => {
-                // TODO decryption and abstract trims
-                // extract username and trim null bytes
-                let username = str::from_utf8(&buffer[USERNAME_START_IDX..=USERNAME_END_IDX])
-                    .unwrap()
-                    .trim_end_matches(|c| c == '\0');
-                // extract PIN and trim null bytes
-                let pin: u16 = str::from_utf8(&buffer[PIN_START_IDX..=PIN_END_IDX])
-                    .unwrap()
-                    .trim_end_matches(|c| c == '\0')
-                    .parse()
-                    .unwrap();
-
-                // create response
-                let mut response = [0u8; MAX_PLAINTEXT_SIZE];
-                response[COMM_COUNTER_IDX] = comm_count;
-                response[MESSAGE_START_IDX] = match bank.attempt_authentication(username, pin) {
-                    true => AUTH_SUCCESS,
-                    false => AUTH_FAILURE,
+        match response.get_type() {
+            MessageType::AuthUser => {
+                let username = match response.get_user() {
+                    Err(_) => return,
+                    Ok(username) => username,
                 };
-                // send response
-                // TODO encrypt response
-                manager.send_bytes(&response);
-                comm_count += 1;
+                let pin = match response.get_pin() {
+                    Err(_) => return,
+                    Ok(pin) => pin,
+                };
+                // send auth response indicating success
+                let mut plaintext = Plaintext::new(&mut comm_count, MessageType::AuthResult);
+                plaintext.set_auth_result(bank.attempt_authentication(&username, pin));
+                manager.send_plaintext(plaintext);
             }
-            Ok(RequestType::End) => {
-                buffer[COMM_COUNTER_IDX] = comm_count;
-                manager.send_bytes(&buffer);
-                comm_count += 1;
+            MessageType::End => {
+                let plaintext = Plaintext::new(&mut comm_count, MessageType::End);
+                manager.send_plaintext(plaintext);
             }
-            Ok(_) => todo!(),
-            Err(_) => (),
+            _ => todo!(),
         }
     }
 }

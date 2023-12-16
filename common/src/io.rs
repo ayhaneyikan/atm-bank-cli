@@ -4,37 +4,20 @@ use std::{
     str,
 };
 
-use crate::message::{constants::MAX_PLAINTEXT_SIZE, Plaintext};
+use crate::{
+    io::errors::ReceiveError,
+    message::{
+        constants::{COMM_COUNTER_IDX, MAX_COMM_COUNTER, MAX_PLAINTEXT_SIZE},
+        Plaintext, Response,
+    },
+};
 
 pub const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
 
 pub const AUTH_SUCCESS: u8 = 0;
 pub const AUTH_FAILURE: u8 = 1;
 
-#[repr(u8)]
-pub enum RequestType {
-    AuthUser,
-    Balance,
-    Withdraw,
-    Deposit,
-    End,
-}
-
-impl TryFrom<u8> for RequestType {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::AuthUser),
-            1 => Ok(Self::Balance),
-            2 => Ok(Self::Withdraw),
-            3 => Ok(Self::Deposit),
-            4 => Ok(Self::End),
-            _ => Err(()),
-        }
-    }
-}
-
+/// Abstracts stream management away from bank and atm
 pub struct StreamManager {
     stream: TcpStream,
 }
@@ -70,26 +53,47 @@ impl StreamManager {
         // TODO encrypt prior to send
         self.stream.write(message).unwrap();
     }
-    /// Reads from stream and stores in provided output buffer
-    pub fn receive(&mut self, output_buf: &mut [u8]) -> Result<usize, ()> {
-        match self.stream.read(output_buf) {
-            Ok(n) => match n {
-                0 => Err(()),
-                _ => Ok(n),
-            },
-            Err(_) => Err(()),
+
+    pub fn receive(&mut self, comm_count: &mut u8) -> Result<Response, ReceiveError> {
+        let mut buf = [0u8; MAX_PLAINTEXT_SIZE];
+        if let Ok(0) = self.stream.read(&mut buf) {
+            return Err(ReceiveError::EndOfStream);
         }
-        // TODO decrypt after read
+        // check for stale connection
+        if buf[COMM_COUNTER_IDX] >= MAX_COMM_COUNTER {
+            return Err(ReceiveError::StaleStream);
+        }
+        // check for external tampering
+        if buf[COMM_COUNTER_IDX] != *comm_count {
+            return Err(ReceiveError::InvalidCount);
+        }
+        *comm_count += 1;
+
+        // TODO decrypt
+
+        // construct Response
+        Response::new(buf).map_err(|_| ReceiveError::InvalidMessage)
     }
-    /// Reads from stream and returns the message as a `String`
-    pub fn receive_as_str(&mut self) -> String {
-        let mut response = [0u8; MAX_PLAINTEXT_SIZE];
-        self.stream.read(&mut response).unwrap();
-        // TODO decrypt and separate out message counter
-        // convert to string
-        str::from_utf8(&response)
-            .unwrap()
-            .trim_end_matches(|c| c == '\0')
-            .to_string()
+}
+
+/// Error types related IO
+pub mod errors {
+    use thiserror::Error;
+
+    /// Error validating response received from stream
+    #[derive(Debug, Error)]
+    pub enum ReceiveError {
+        /// Stream has been closed
+        #[error("This stream has been closed")]
+        EndOfStream,
+        /// Maximum number of communications has been reached
+        #[error("The maximum consecutive communications has been reached. Stream must be closed.")]
+        StaleStream,
+        /// Received message count did not match local count
+        #[error("Message count did not match local count. An adversary may have dropped or replayed this message.")]
+        InvalidCount,
+        /// Received message type was unrecognized
+        #[error("Received message type was unrecognized.")]
+        InvalidMessage,
     }
 }
