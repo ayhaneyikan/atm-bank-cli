@@ -1,12 +1,9 @@
 use common::{
     crypto::{
-        CryptoState, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE, MESSAGE_START_IDX,
-        MESSAGE_TYPE_IDX, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
+        CryptoState, Plaintext, COMM_COUNTER_IDX, MAX_PLAINTEXT_SIZE, MAX_USERNAME_SIZE,
+        MESSAGE_START_IDX, MESSAGE_TYPE_IDX, PIN_SIZE, PIN_START_IDX, USERNAME_START_IDX,
     },
-    io::{
-        create_plaintext, insert_bytes_into_plaintext, RequestType, StreamManager, AUTH_SUCCESS,
-        BANK_SERVER_ADDR,
-    },
+    io::{RequestType, StreamManager, AUTH_SUCCESS, BANK_SERVER_ADDR},
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -143,14 +140,9 @@ impl ATM {
         //
         // construct and send authentication request
 
-        let mut plaintext = create_plaintext(self.comm_count, RequestType::AuthUser);
-        insert_bytes_into_plaintext(&mut plaintext, username.as_bytes(), USERNAME_START_IDX);
-        insert_bytes_into_plaintext(&mut plaintext, pin.as_bytes(), PIN_START_IDX);
-
-        // TODO encrypt prior to send
-        // send plaintext to bank
-        self.stream.send(&plaintext);
-        self.comm_count += 1;
+        let mut plaintext = Plaintext::new(&mut self.comm_count, RequestType::AuthUser);
+        plaintext.init_auth_user(username, pin);
+        self.stream.send_plaintext(plaintext);
 
         // receive response
         let mut response = [0u8; MAX_PLAINTEXT_SIZE];
@@ -178,9 +170,8 @@ impl ATM {
     fn balance(&self) {}
 
     fn end_session(&mut self) {
-        let plaintext = create_plaintext(self.comm_count, RequestType::End);
-        self.stream.send(&plaintext);
-        self.comm_count += 1;
+        let plaintext = Plaintext::new(&mut self.comm_count, RequestType::End);
+        self.stream.send_plaintext(plaintext);
 
         let mut response = [0u8; MAX_PLAINTEXT_SIZE];
         self.stream.receive(&mut response).unwrap();

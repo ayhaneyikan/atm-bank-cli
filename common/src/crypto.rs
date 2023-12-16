@@ -1,5 +1,7 @@
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
+use crate::io::RequestType;
+
 // for encryption sources see:
 //  https://cryptography.rs/
 //  https://kerkour.com/end-to-end-encryption-key-exchange-cryptography-rust
@@ -46,6 +48,54 @@ pub const MAX_PLAINTEXT_SIZE: usize = 1 + 1 + MESSAGE_BODY_SIZE;
 
 const XCHACHA20_POLY1305_KEY_SIZE: usize = 32; // 32 byte key
 const XCHACHA20_POLY1305_NONCE_SIZE: usize = 24; // 24 byte nonce
+
+/// Contains a message plaintext
+pub struct Plaintext<'a> {
+    contents: [u8; MAX_PLAINTEXT_SIZE],
+    comm_count: &'a mut u8,
+}
+
+impl<'a> Plaintext<'a> {
+    /// Create a new instance of an ATM plaintext
+    pub fn new(comm_count: &'a mut u8, request: RequestType) -> Self {
+        let mut ptext = [0u8; MAX_PLAINTEXT_SIZE];
+        ptext[COMM_COUNTER_IDX] = *comm_count;
+        ptext[MESSAGE_TYPE_IDX] = request as u8;
+        Self {
+            contents: ptext,
+            comm_count,
+        }
+    }
+    /// Returns reference to the message
+    pub fn get_bytes(&self) -> &[u8] {
+        &self.contents
+    }
+    /// Updates comm count reference after send
+    pub fn update_count(&mut self) {
+        *self.comm_count += 1;
+    }
+
+    /// Resets the message body contents to avoid possible overlaps caused by
+    /// user error: calling multiple inits
+    fn reset_body(&mut self) {
+        for i in MESSAGE_START_IDX..MAX_PLAINTEXT_SIZE {
+            self.contents[i] = 0;
+        }
+    }
+    /// Generically inserts bytes into the plaintext
+    fn generic_insert(&mut self, bytes: &[u8], offset: usize) {
+        for i in 0..bytes.len() {
+            self.contents[i + offset] = bytes[i];
+        }
+    }
+
+    /// Converts this plaintext into an auth user message
+    pub fn init_auth_user(&mut self, username: &str, pin: &str) {
+        self.reset_body();
+        self.generic_insert(username.as_bytes(), USERNAME_START_IDX);
+        self.generic_insert(pin.as_bytes(), PIN_START_IDX);
+    }
+}
 
 pub struct CryptoState {
     secret: EphemeralSecret,
