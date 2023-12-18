@@ -73,7 +73,7 @@ pub struct Plaintext<'a> {
 }
 
 impl<'a> Plaintext<'a> {
-    /// Create a new instance of an ATM plaintext
+    /// Create a new instance of a plaintext
     pub fn new(comm_count: &'a mut u8, msg_type: MessageType) -> Self {
         let mut ptext = [0u8; MAX_PLAINTEXT_SIZE];
         ptext[COMM_COUNTER_IDX] = *comm_count;
@@ -119,6 +119,7 @@ impl<'a> Plaintext<'a> {
 
     /// Converts this plaintext into an auth result message
     pub fn set_auth_result(&mut self, result: bool) {
+        self.reset_body();
         self.contents[MESSAGE_START_IDX] = match result {
             true => AUTH_SUCCESS,
             false => AUTH_FAILURE,

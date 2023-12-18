@@ -7,7 +7,7 @@ use std::{
 use crate::{
     io::errors::ReceiveError,
     message::{
-        constants::{COMM_COUNTER_IDX, MAX_COMM_COUNTER, MAX_PLAINTEXT_SIZE},
+        constants::*,
         Plaintext, Response,
     },
 };

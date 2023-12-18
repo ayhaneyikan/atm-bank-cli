@@ -15,7 +15,7 @@ enum ATMState {
 /// Maintains ATM state and facilitates communications with the bank
 pub struct ATM {
     state: ATMState,
-    stream: StreamManager,
+    manager: StreamManager,
     /// Tracks number of communications. Incremented after SEND
     comm_count: u8,
 }
@@ -25,7 +25,7 @@ impl ATM {
     pub fn new() -> Self {
         Self {
             state: ATMState::BASE,
-            stream: StreamManager::from_addr(BANK_SERVER_ADDR),
+            manager: StreamManager::from_addr(BANK_SERVER_ADDR),
             comm_count: 0,
         }
     }
@@ -157,12 +157,12 @@ impl ATM {
 
         let mut plaintext = Plaintext::new(&mut self.comm_count, MessageType::AuthUser);
         plaintext.set_auth_user(username, pin);
-        self.stream.send_plaintext(plaintext);
+        self.manager.send_plaintext(plaintext);
 
         //
         // receive and validate response
 
-        let response = match self.stream.receive(&mut self.comm_count) {
+        let response = match self.manager.receive(&mut self.comm_count) {
             Err(e) => {
                 self.handle_receive_error(e);
                 return;
@@ -192,9 +192,9 @@ impl ATM {
     /// Sends end session request to bank, receives confirmation response and updates ATM state
     fn end_session(&mut self) {
         let plaintext = Plaintext::new(&mut self.comm_count, MessageType::End);
-        self.stream.send_plaintext(plaintext);
+        self.manager.send_plaintext(plaintext);
 
-        match self.stream.receive(&mut self.comm_count) {
+        match self.manager.receive(&mut self.comm_count) {
             Err(e) => {
                 self.handle_receive_error(e);
             }
