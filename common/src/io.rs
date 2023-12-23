@@ -6,10 +6,7 @@ use std::{
 
 use crate::{
     io::errors::ReceiveError,
-    message::{
-        constants::*,
-        Plaintext, Response,
-    },
+    message::{constants::*, Plaintext, Response},
 };
 
 pub const BANK_SERVER_ADDR: &str = "127.0.0.1:32001";
