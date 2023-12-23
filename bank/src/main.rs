@@ -59,51 +59,36 @@ fn main() {
 /// retreives a lock on the bank after receiving input and utilizes the Bank's
 /// methods for processing requests.
 fn process_local_commands(bank: Arc<Mutex<Bank>>) {
-    println!("Local command handler");
+    // initial prompt
+    println!("\nAvailable commands:\n{}", Bank::get_help_display());
+    print!("\n{}", Bank::get_prompt());
+    io::stdout().flush().unwrap();
 
-    /* read in user input */
-    let prompt = String::from("BANK: ");
+    // user input buffer
     let mut user_input = String::new();
 
-    print!("{prompt}"); // prompt user
-    io::stdout().flush().unwrap(); // flush output buffer to terminal
+    // iteratively read user input
     while io::stdin()
         .read_line(&mut user_input)
         .expect("Failed to read line from stdin")
         > 0
     {
-        /* remove newline from user input */
+        // remove newline from user input
         user_input.pop();
 
-        /* provide exit functionality */
-        if user_input == "close bank" {
+        if user_input == "exit" {
             break;
         }
 
-        /* retreive lock on the bank */
+        // retreive lock on the bank
         let mut bank = bank.lock().unwrap();
-        /* check for valid command and call appropriate helper function */
-        if user_input.starts_with("create-user") {
-            bank.process_create_user(&user_input);
-        } else if user_input.starts_with("deposit") {
-            bank.process_deposit(&user_input);
-        } else if user_input.starts_with("balance") {
-            bank.process_balance(&user_input);
-        }
-        // TODO: ADD A users COMMAND TO DISPLAY ACCOUNTS
-        else if user_input == "help" {
-            println!("  create-user <user-name> <pin> <balance>");
-            println!("  deposit <user-name> <amt>");
-            println!("  balance <user-name>");
-            println!("  close bank\n");
-        } else {
-            println!("Invalid command\n");
-        }
 
-        /* reprompt user */
-        print!("{prompt}");
-        io::stdout().flush().unwrap(); // flush prompt
-                                       /* clear user input buffer before next read */
+        bank.process_input(&user_input.trim());
+
+        // reprompt user
+        print!("\n{}", Bank::get_prompt());
+        io::stdout().flush().unwrap();
+        // clear input buffer before next read
         user_input.clear();
     }
 }

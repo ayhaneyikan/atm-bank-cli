@@ -131,7 +131,7 @@ impl ATM {
 
         // early exit if invalid command
         if !BS_RE.is_match(user_input) {
-            println!("Usage: begin-session <user-name> <PIN>\n");
+            println!("Usage: begin-session <user-name> <4-digit-PIN>\n");
             return;
         }
 
@@ -179,7 +179,7 @@ impl ATM {
             Ok(true) => {
                 // update login state
                 self.state = ATMState::LOGGED(username.to_string());
-                println!("Authorization successful");
+                println!("Authorization successful\n");
                 println!("Available commands:\n{}", self.get_help_display());
             }
         }
