@@ -64,6 +64,13 @@ impl Bank {
             None => false,
         }
     }
+    /// Retrieves a user's balance
+    pub fn get_balance(&self, username: &str) -> Result<f64, ()> {
+        match self.users.get(username) {
+            None => Err(()),
+            Some(user) => Ok(user.balance),
+        }
+    }
 
     /// Prints the state of the bank information to stdin
     fn display_users(&self) {

@@ -156,7 +156,7 @@ impl ATM {
         // construct and send authentication request
 
         let mut plaintext = Plaintext::new(&mut self.comm_count, MessageType::AuthUser);
-        plaintext.set_auth_user(username, pin);
+        plaintext.set_user_pin(username, pin);
         self.manager.send_plaintext(plaintext);
 
         //
@@ -170,9 +170,7 @@ impl ATM {
             Ok(response) => response,
         };
         match response.get_auth_result() {
-            Err(_) => {
-                self.handle_receive_error(ReceiveError::InvalidMessage);
-            }
+            Err(_) => self.handle_receive_error(ReceiveError::InvalidMessage),
             Ok(false) => {
                 println!("Authorization failed");
             }
@@ -187,7 +185,28 @@ impl ATM {
 
     /// Handles user request to retreive balance information from bank.
     /// This method can only be reached if a user is logged in.
-    fn balance(&self) {}
+    fn balance(&mut self) {
+        let mut plaintext = Plaintext::new(&mut self.comm_count, MessageType::Balance);
+        match &self.state {
+            ATMState::BASE => panic!(
+                "ERROR: unreachable state achieved. Balance method called with no user logged in."
+            ),
+            ATMState::LOGGED(username) => plaintext.set_user(username),
+        }
+        self.manager.send_plaintext(plaintext);
+
+        let response = match self.manager.receive(&mut self.comm_count) {
+            Err(e) => {
+                self.handle_receive_error(e);
+                return;
+            }
+            Ok(response) => response,
+        };
+        match response.get_balance() {
+            Err(_) => self.handle_receive_error(ReceiveError::InvalidMessage),
+            Ok(balance) => println!("$ {:.2}", balance),
+        }
+    }
 
     /// Sends end session request to bank, receives confirmation response and updates ATM state
     fn end_session(&mut self) {
@@ -197,6 +216,7 @@ impl ATM {
         match self.manager.receive(&mut self.comm_count) {
             Err(e) => {
                 self.handle_receive_error(e);
+                return;
             }
             Ok(_) => {
                 self.state = ATMState::BASE;

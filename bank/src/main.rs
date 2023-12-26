@@ -128,6 +128,23 @@ fn handle_remote_connection(bank: Arc<Mutex<Bank>>, mut manager: StreamManager) 
                 plaintext.set_auth_result(bank.attempt_authentication(&username, pin));
                 manager.send_plaintext(plaintext);
             }
+            MessageType::Balance => {
+                dbg!("balance");
+                let username = match response.get_user() {
+                    Err(_) => return,
+                    Ok(username) => username,
+                };
+                dbg!(&username);
+                let balance = match bank.get_balance(&username) {
+                    Err(_) => return,
+                    Ok(balance) => balance,
+                };
+                dbg!(balance);
+                // send balance back
+                let mut plaintext = Plaintext::new(&mut comm_count, MessageType::Balance);
+                plaintext.set_balance(balance);
+                manager.send_plaintext(plaintext);
+            }
             MessageType::End => {
                 let plaintext = Plaintext::new(&mut comm_count, MessageType::End);
                 manager.send_plaintext(plaintext);

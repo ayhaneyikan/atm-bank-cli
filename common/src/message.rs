@@ -12,6 +12,8 @@ pub mod constants {
     pub const MESSAGE_START_IDX: usize = MESSAGE_TYPE_IDX + 1;
     /// Maximum length of message body
     pub const MESSAGE_BODY_SIZE: usize = MAX_USERNAME_SIZE + PIN_SIZE;
+    /// Index for end of message body
+    pub const MESSAGE_END_IDX: usize = MESSAGE_START_IDX + MESSAGE_BODY_SIZE - 1;
 
     /// Index for start of username within plaintext
     pub const USERNAME_START_IDX: usize = MESSAGE_START_IDX;
@@ -26,6 +28,9 @@ pub mod constants {
     pub const PIN_SIZE: usize = 4;
     /// Index for end of PIN within plaintext
     pub const PIN_END_IDX: usize = PIN_START_IDX + PIN_SIZE - 1;
+
+    /// Maximum size for big endian notation of an f64
+    pub const MAX_BALANCE_SIZE: usize = 8;
 
     /// Length of the entire plaintext
     pub const MAX_PLAINTEXT_SIZE: usize = 1 + 1 + MESSAGE_BODY_SIZE;
@@ -110,20 +115,31 @@ impl<'a> Plaintext<'a> {
     //
     // message type setters
 
-    /// Converts this plaintext into an auth user message
-    pub fn set_auth_user(&mut self, username: &str, pin: &str) {
+    /// Adds username to message
+    pub fn set_user(&mut self, username: &str) {
         self.reset_body();
         self.generic_insert(username.as_bytes(), USERNAME_START_IDX);
+    }
+
+    /// Adds username and pin to message
+    pub fn set_user_pin(&mut self, username: &str, pin: &str) {
+        self.set_user(username);
         self.generic_insert(pin.as_bytes(), PIN_START_IDX);
     }
 
-    /// Converts this plaintext into an auth result message
+    /// Adds authentication result to message
     pub fn set_auth_result(&mut self, result: bool) {
         self.reset_body();
         self.contents[MESSAGE_START_IDX] = match result {
             true => AUTH_SUCCESS,
             false => AUTH_FAILURE,
         };
+    }
+
+    /// Adds balance to message
+    pub fn set_balance(&mut self, balance: f64) {
+        self.reset_body();
+        self.generic_insert(format!("{}", balance).as_bytes(), MESSAGE_START_IDX);
     }
 }
 
@@ -154,18 +170,18 @@ impl Response {
 
     /// Returns username string or error
     pub fn get_user(&self) -> Result<String, ResponseError> {
-        if !matches!(self.msg_type, MessageType::AuthUser) {
-            return Err(ResponseError::DeconstructError {
+        match self.msg_type {
+            MessageType::AuthUser | MessageType::Balance => Ok(str::from_utf8(
+                &self.contents[USERNAME_START_IDX..=USERNAME_END_IDX],
+            )
+            .map_err(|_| ResponseError::InvalidBytesForString)?
+            .trim_end_matches(|c| c == '\0')
+            .to_string()),
+            _ => Err(ResponseError::DeconstructError {
                 request: MessageType::AuthUser,
                 actual: self.msg_type,
-            });
+            }),
         }
-        Ok(
-            str::from_utf8(&self.contents[USERNAME_START_IDX..=USERNAME_END_IDX])
-                .map_err(|_| ResponseError::InvalidBytesForString)?
-                .trim_end_matches(|c| c == '\0')
-                .to_string(),
-        )
     }
 
     /// Returns pin u16 or error
@@ -176,6 +192,7 @@ impl Response {
                 actual: self.msg_type,
             });
         }
+        // TODO consider endian notation instead
         str::from_utf8(&self.contents[PIN_START_IDX..=PIN_END_IDX])
             .map_err(|_| ResponseError::InvalidBytesForString)?
             .trim_end_matches(|c| c == '\0')
@@ -192,6 +209,22 @@ impl Response {
             });
         }
         Ok(self.contents[MESSAGE_START_IDX] == AUTH_SUCCESS)
+    }
+
+    /// Returns balance value or error
+    pub fn get_balance(&self) -> Result<f64, ResponseError> {
+        if !matches!(self.msg_type, MessageType::Balance) {
+            return Err(ResponseError::DeconstructError {
+                request: MessageType::Balance,
+                actual: self.msg_type,
+            });
+        }
+        // TODO switch to endian notation for easier conversions
+        str::from_utf8(&self.contents[MESSAGE_START_IDX..=MESSAGE_END_IDX])
+            .map_err(|_| ResponseError::InvalidBytesForString)?
+            .trim_end_matches(|c| c == '\0')
+            .parse()
+            .map_err(|_| ResponseError::InvalidBytesForBalance)
     }
 }
 
@@ -225,5 +258,8 @@ pub mod errors {
         /// Failed u16 PIN conversion from received byte string
         #[error("Cannot covert message body into a valid PIN.")]
         InvalidBytesForPIN,
+        /// Failed f64 balance conversion from received byte string
+        #[error("Cannot covert message body into a valid balance.")]
+        InvalidBytesForBalance,
     }
 }
