@@ -28,7 +28,6 @@ version = "0.1.0"
 dependencies = [
  "common",
  "lazy_static",
- "pool",
  "regex",
 ]
 
@@ -171,10 +170,6 @@ name = "platforms"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14e6ab3f592e6fb464fc9712d8d6e6912de6473954635fd76a589d832cffcbb0"
-
-[[package]]
-name = "pool"
-version = "0.1.0"
 
 [[package]]
 name = "ppv-lite86"
